@@ -1,0 +1,277 @@
+---
+title: "EDA"
+format: pdf
+---
+
+```{r include=FALSE}
+library("tidyverse")
+all_results <- read_rds("all_results.rds")
+```
+
+
+```{r}
+all_results %>%
+  ggplot(aes(bw, total)) +
+    geom_point(alpha = .10) +
+    geom_point(aes(x = 87, y = 227), color = "red") +
+    facet_wrap(vars(gender), scales = "free")
+
+all_results %>%
+  filter(name %in% c("TALAKHADZE Lasha", "LYU Xiaojun", "TIAN Tao", "PAREDES MONTANO Lesman")) %>%
+  ggplot(aes(age, total, color = division)) +
+    geom_point() +
+    facet_wrap(vars(name), scales = "free")
+
+all_results %>%
+  filter(name_born == "BRECHTEFELD Elson Edward 1994-03-02") %>%
+  ggplot(aes(age, total, color = division)) +
+    geom_point()
+
+all_results %>%
+  filter(name %in% c("TALAKHADZE Lasha", "LYU Xiaojun", "TIAN Tao", "PAREDES MONTANO Lesman")) %>%
+  ggplot(aes(age, career_make_perc, color = division)) +
+    geom_point() +
+    facet_wrap(vars(name))
+
+all_results %>%
+  group_by(name_born, division) %>%
+  count(name_born) %>%
+  arrange(name_born)
+
+all_results %>%
+  ggplot(aes(sn_best, cj_best)) +
+    geom_point()
+
+all_results %>%
+  group_by(name_born) %>%
+  count() %>%
+  arrange(desc(n))
+
+
+```
+
+
+```{r}
+under20 <- all_results %>% 
+  filter(age < 21) %>% 
+  group_by(name_born) %>% 
+  summarise(max_sn = max(max_sn, sn_best), max_cj = max(max_cj, cj_best), max_total = max(max_total, total))
+
+over20 <- all_results %>% 
+  filter(age >= 21) %>% 
+  group_by(name_born) %>% 
+  summarise(max_sn = max(max_sn, sn_best), max_cj = max(max_cj, cj_best), max_total = max(max_total, total))
+
+career_results <- inner_join(under20, over20, by = "name_born")
+
+semi_join(all_results, career_results, by = "name_born") %>% 
+  group_by(name_born) %>% 
+  summarise(senior = sum(age>20), junior = sum(age<21)) %>% 
+  arrange(desc(junior))
+```
+
+
+
+```{r}
+all_results %>%
+  filter(name_born == "MORRIS Hampton Miller 2004-02-17") %>%
+  ggplot(aes(age, bw, color = total)) +
+    geom_point()
+```
+
+
+
+```{r}
+attempts <- all_results %>% 
+  filter(years_wl != 0) %>% 
+  # pivot_longer(c(sn1_perc, sn2_perc, sn3_perc), 
+  #              names_to = "sn_attempt",
+  #              values_to = "sn_perc")
+  pivot_longer(c(cj1_perc, cj2_perc, cj3_perc),
+               names_to = "cj_attempt",
+               values_to = "cj_perc")
+
+# sn_attempts  
+  
+sn_attempts <- attempts %>% 
+  select(!contains("cj")) %>% 
+  drop_na(sn_perc) %>%
+  distinct(.keep_all = TRUE) %>%
+  filter(max_sn != 0, sn_perc != Inf, sn1 != 0, sn2 != 0, sn3 !=0) %>%
+  mutate(make = (sn_perc > 0) %>% as.double(), sn_perc = abs(sn_perc), sn_attempt = str_extract(sn_attempt, "\\d") %>% as.factor())
+
+write_rds(sn_attempts, "sn_attempts.rds")
+
+cj_attempts <- attempts %>% 
+  select(!contains("sn")) %>% 
+  drop_na(cj_perc) %>% 
+  distinct(.keep_all = TRUE) %>% 
+  filter(max_cj != 0, cj_perc != Inf, cj1 != 0, cj2 != 0, cj3 !=0) %>% 
+  mutate(make = (cj_perc > 0) %>% as.double(), cj_perc = abs(cj_perc), cj_attempt = str_extract(cj_attempt, "\\d") %>% as.factor())
+
+write_rds(cj_attempts, "cj_attempts.rds")
+```
+
+```{r}
+sn_attempts %>% 
+  filter(sn_perc < 2) %>%
+  ggplot(aes(abs(sn_perc))) +
+    geom_histogram(boundary = 0, bins = 50) +
+    scale_x_continuous(limits = c(.75, 1.5)) +
+    facet_grid(rows = vars(division), cols = vars(sn_attempt), scales = "free")
+
+cj_attempts %>% 
+  filter(cj_perc < 2) %>%
+  ggplot(aes(abs(cj_perc))) +
+    geom_histogram(boundary = 0, bins = 50) +
+    scale_x_continuous(limits = c(.75, 1.5)) +
+    facet_grid(rows = vars(division), cols = vars(cj_attempt), scales = "free")
+```
+
+
+
+```{r}
+# test <- sn_attempts %>% 
+#   mutate(make = (sn_perc > 0) %>% as.double(), sn_perc = abs(sn_perc)) %>% 
+#   group_by(name_born) 
+#   # select(name_born, sn_attempt, make, max_sn, sn_perc)
+# test
+```
+
+```{r}
+sn_attempts %>%
+  filter(division == "senior", sn_perc < 1.5, sn_perc > .5) %>%
+  ggplot(aes(sn_perc, make)) +
+    geom_jitter(alpha = .10)
+
+sn_attempts %>% 
+  filter( sn_perc < 1.15, sn_perc > .5) %>% 
+  mutate(sn_perc = round(sn_perc, 2)) %>% 
+  group_by(sn_perc) %>% 
+  summarise(avg_make_rate = mean(make)) %>% 
+  ggplot(aes(sn_perc, avg_make_rate)) +
+    geom_point() +
+    geom_smooth() +
+    scale_y_continuous(limits = c(0,1))
+
+cj_attempts %>% 
+  filter( cj_perc < 1.15, cj_perc > .5) %>% 
+  mutate(cj_perc = round(cj_perc, 2)) %>% 
+  group_by(cj_perc) %>% 
+  summarise(avg_make_rate = mean(make)) %>% 
+  ggplot(aes(cj_perc, avg_make_rate)) +
+    geom_point() +
+    geom_smooth() +
+    scale_y_continuous(limits = c(0,1))
+
+sn_attempts %>%
+  filter(name %in% c("TALAKHADZE Lasha", "LYU Xiaojun", "TIAN Tao", "PAREDES MONTANO Lesman")) %>%
+  ggplot(aes(age, sn_perc*max_sn, color = as.factor(make))) +
+    geom_point() +
+    facet_wrap(vars(name), scales = "free")
+
+sn_attempts %>% 
+  ggplot(aes(sn_perc, sn_career_make_perc, color = as.factor(make))) +
+    geom_point(alpha = .1) +
+    facet_wrap(vars(sn_attempt))
+```
+
+```{r}
+#If you do not have an ID per row, use the following code to create an ID
+tb <- sn_attempts %>% mutate(id = row_number())
+#Create training set
+train <- tb %>% filter(division == "senior") %>% sample_frac(.70)
+#Create test set
+test  <- anti_join(tb, train, by = 'id') %>% select(-id)
+train <- select(train, -id)
+```
+
+# Logistic Regression
+
+```{r}
+mod <- glm(make ~ max_sn + age + sn_career_make_perc + bw + years_wl + sn_attempt, data = test, family = "binomial")
+summary(mod)
+
+pred <- predict(mod, newdata = test, type = "response")
+test %>% 
+  mutate(make_prob = pred) %>% 
+  filter(sn_perc < 1.15) %>% 
+  ggplot(aes(sn_perc, make_prob, color = as.factor(make))) +
+    geom_point(alpha = .05) +
+    facet_wrap(vars(make))
+```
+
+
+```{r}
+train %>% 
+  mutate(make_prob = predict(mod, newdata = train, type = "response")) %>% 
+  filter(name %in% c("PIZZOLATO Antonino", "VALLENILLA SANCHEZ Keydomar Giovanni", "TIAN Tao")) %>% 
+  ggplot(aes(sn_perc, make_prob, color = as.factor(make))) +
+    geom_point() +
+    facet_wrap(vars(name))
+```
+
+
+
+
+# Plot to include at some point
+
+```{r}
+sn_attempts <- read_rds("sn_attempts.rds") %>%
+  filter(division != "youth", sn_perc > .85, sn_perc < 1.15) %>%
+  select(name_born, name, nation, bw, group, division, age, max_sn,
+         max_total, sn_career_make_perc, sn_avg_rank, comp_avg_rank,
+         years_wl, sn_attempt, sn_perc, make) %>%
+  mutate() %>%
+  group_by(name_born) %>%
+  filter(n() > 6) %>%
+  ungroup()
+
+cj_attempts <- read_rds("cj_attempts.rds") %>%
+  filter(division != "youth", cj_perc > .85, cj_perc < 1.15) %>%
+  select(name_born, name, nation, bw, group, division, age, max_cj,
+         max_total, cj_career_make_perc, cj_avg_rank, comp_avg_rank,
+         years_wl, cj_attempt, cj_perc, make) %>%
+  mutate() %>%
+  group_by(name_born) %>%
+  filter(n() > 6) %>%
+  ungroup()
+
+### Avg make rate for each attempt
+sn_attempts %>% 
+  mutate(sn_perc = round(sn_perc, 2)) %>% 
+  group_by(sn_attempt, sn_perc) %>% 
+  summarise(avg = mean(make), count = n()) %>% 
+  ggplot(aes(sn_perc, avg, color = sn_attempt)) +
+    geom_point(aes(size = count)) +
+    geom_smooth()
+
+cj_attempts %>% 
+  mutate(cj_perc = round(cj_perc, 2)) %>% 
+  group_by(cj_attempt, cj_perc) %>% 
+  summarise(avg = mean(make), count = n()) %>% 
+  ggplot(aes(cj_perc, avg, color = cj_attempt)) +
+    geom_point(aes(size = count)) +
+    geom_smooth()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
